@@ -1,0 +1,19 @@
+{
+    "name": "ogp-ledger",
+    "version": "1.0.0",
+    "description": "Blockchain and cryptocurrency service layer built on OGP Fabric",
+    "main": "src/index.js",
+    "type": "module",
+    "dependencies": {
+      "ogp-services-node": "^1.0.0",
+      "ogp-services-client": "^1.0.0",
+      "uuid": "^9.0.1",
+      "crypto-js": "^4.2.0"
+    },
+    "scripts": {
+      "start": "node src/index.js",
+      "test": "node test/ledger.test.js"
+    },
+    "license": "MIT"
+  }
+  
