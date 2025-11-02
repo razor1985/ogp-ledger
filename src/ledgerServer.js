@@ -1,46 +1,59 @@
-import { OGPServer } from "ogp-services-node";
-import { validateSchema } from "./consensus/schemaValidator.js";
-import { pbftConsensus } from "./consensus/pbft.js";
-import { v4 as uuidv4 } from "uuid";
+import { Ed25519 } from "./crypto/ed25519.js";
+import { Blockchain } from "./core/blockchain.js";
+import { PBFT } from "./consensus/pbft.js";
+import { Raft } from "./consensus/raft.js";
 
 export class LedgerServer {
-  constructor(config = {}) {
-    this.ogp = new OGPServer({
-      orgId: config.orgId || "OGP_Foundation",
-      serviceType: "ledger",
-      region: config.region || "ap-south-1",
-    });
+  constructor({ orgId, privateKey = null, peers = [], consensus = "PBFT" } = {}) {
+    this.orgId = orgId;
+    this.privateKey = privateKey;
+    this.blockchain = new Blockchain();
     this.ledger = new Map();
-  }
 
-  async start() {
-    this.ogp.registerSchema("ledger_v1", {
-      fields: ["from", "to", "amount", "nonce", "signature"],
-      rules: { amount: ">0" },
-    });
+    const mock = process.env.PBFT_MODE !== "production";
 
-    this.ogp.on("ledger.tx", async (tx) => {
-      if (!validateSchema(tx)) return;
-      const approved = await pbftConsensus(tx);
-      if (approved) {
-        const txId = uuidv4();
-        this.ledger.set(txId, tx);
-        console.log("✅ Transaction accepted:", txId);
-      } else {
-        console.log("❌ Transaction rejected:", tx);
-      }
-    });
-
-    this.ogp.listen();
-    console.log("🚀 OGP Ledger Server running");
-  }
-
-  getBalance(org) {
-    let balance = 0;
-    for (const [, tx] of this.ledger) {
-      if (tx.to === org) balance += tx.amount;
-      if (tx.from === org) balance -= tx.amount;
+    if (consensus === "RAFT") {
+      this.consensusEngine = new Raft({ mock, nodeId: orgId, peers });
+      console.log(`🧭 Using Raft consensus | Mock: ${mock}`);
+    } else {
+      this.consensusEngine = new PBFT({ mock, nodeId: orgId, privateKey, peers });
+      console.log(`🧭 Using PBFT consensus | Mock: ${mock}`);
     }
-    return balance;
+  }
+
+  async processTransaction(tx, senderPublicKey) {
+    // 1️⃣ Verify signature
+    const { signature, ...txData } = tx;
+    if (!Ed25519.verify(txData, signature, senderPublicKey)) {
+      throw new Error("❌ Invalid signature");
+    }
+
+    // 2️⃣ Consensus
+    const approved =
+      (await this.consensusEngine.reachConsensus?.(tx)) ??
+      (await this.consensusEngine.replicate?.(tx));
+
+    if (!approved) throw new Error("❌ Consensus/Replication failed");
+
+    // 3️⃣ Add and commit block
+    await this.blockchain.addTransaction(tx);
+    await this.blockchain.commitBlock(this.consensusEngine.validatorSignatures);
+
+    // 4️⃣ Update balances
+    this.updateBalances(tx);
+  }
+
+  updateBalances(tx) {
+    const { from, to, amount, type } = tx;
+    if (type === "mint") {
+      this.ledger.set(to, (this.ledger.get(to) || 0) + amount);
+    } else {
+      this.ledger.set(from, (this.ledger.get(from) || 0) - amount);
+      this.ledger.set(to, (this.ledger.get(to) || 0) + amount);
+    }
+  }
+
+  getBalance(accountId) {
+    return this.ledger.get(accountId) || 0;
   }
 }

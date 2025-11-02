@@ -1,4 +1,4 @@
-import { OGPClient } from "ogp-services-client";
+import { OGPClient } from "@razor1985/ogp-services-client";
 import { signData } from "./crypto/signer.js";
 
 export class LedgerClient {

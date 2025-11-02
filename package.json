@@ -1,19 +1,38 @@
 {
-    "name": "ogp-ledger",
-    "version": "1.0.0",
-    "description": "Blockchain and cryptocurrency service layer built on OGP Fabric",
+    "name": "@razor1985/ogp-ledger",
+    "version": "1.0.1",
+    "description": "OGP Ledger — a minerless blockchain and consensus framework built on PBFT/Raft for distributed trust.",
     "main": "src/index.js",
     "type": "module",
-    "dependencies": {
-      "ogp-services-node": "^1.0.0",
-      "ogp-services-client": "^1.0.0",
-      "uuid": "^9.0.1",
-      "crypto-js": "^4.2.0"
-    },
     "scripts": {
-      "start": "node src/index.js",
-      "test": "node test/ledger.test.js"
+        "test": "node test/ledger.test.js",
+        "start": "node src/ledgerServer.js"
     },
-    "license": "MIT"
-  }
-  
+    "dependencies": {
+        "@razor1985/ogp-client": "^1.0.3",
+        "@razor1985/ogp-services-node": "^1.0.6",
+        "chalk": "^5.6.2",
+        "crypto-js": "^4.2.0",
+        "dotenv": "^17.2.3",
+        "uuid": "^9.0.1"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/razor1985/ogp-ledger.git"
+    },
+    "keywords": [
+        "OGP",
+        "ledger",
+        "blockchain",
+        "PBFT",
+        "Raft",
+        "minerless",
+        "distributed",
+        "consensus"
+    ],
+    "author": "Karunesh R. Kaimal <razor1985>",
+    "license": "MIT",
+    "publishConfig": {
+        "registry": "https://npm.pkg.github.com/"
+    }
+}
