@@ -1,9 +1,31 @@
-import chalk from "chalk";
+import util from "util";
 
-const stamp = () => new Date().toISOString();
-
-export default {
-  info: (...a) => console.log(chalk.cyan(`[${stamp()}][INFO]`), ...a),
-  warn: (...a) => console.warn(chalk.yellow(`[${stamp()}][WARN]`), ...a),
-  error: (...a) => console.error(chalk.red(`[${stamp()}][ERROR]`), ...a),
+const COLORS = {
+  reset: "\x1b[0m",
+  gray: "\x1b[90m",
+  red: "\x1b[31m",
+  yellow: "\x1b[33m",
+  green: "\x1b[32m",
+  cyan: "\x1b[36m",
 };
+
+function timestamp() {
+  return new Date().toISOString();
+}
+
+function format(msg, ...args) {
+  return util.format(msg, ...args);
+}
+
+const logger = {
+  debug: (msg, ...args) =>
+    console.log(`${COLORS.gray}[${timestamp()}][DEBUG]${COLORS.reset} ${format(msg, ...args)}`),
+  info: (msg, ...args) =>
+    console.log(`${COLORS.cyan}[${timestamp()}][INFO]${COLORS.reset} ${format(msg, ...args)}`),
+  warn: (msg, ...args) =>
+    console.warn(`${COLORS.yellow}[${timestamp()}][WARN]${COLORS.reset} ${format(msg, ...args)}`),
+  error: (msg, ...args) =>
+    console.error(`${COLORS.red}[${timestamp()}][ERROR]${COLORS.reset} ${format(msg, ...args)}`),
+};
+
+export default logger;

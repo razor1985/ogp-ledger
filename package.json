@@ -10,7 +10,9 @@
     },
     "dependencies": {
         "@razor1985/ogp-client": "^1.0.3",
-        "@razor1985/ogp-services-node": "^1.0.6",
+        "@razor1985/ogp-ledgerdb": "^1.0.12",
+        "@razor1985/ogp-services-client": "^1.0.5",
+        "@razor1985/ogp-services-node": "^1.0.8",
         "chalk": "^5.6.2",
         "crypto-js": "^4.2.0",
         "dotenv": "^17.2.3",

@@ -1,28 +1,23 @@
-// src/crypto/ed25519.js
-// Modern, deterministic signing (stronger & faster than ECDSA)
-
 import { generateKeyPairSync, sign, verify } from "crypto";
+import logger from "../utils/logger.js";
 
 export class Ed25519 {
   static generateKeyPair() {
-    const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
+    const kp = generateKeyPairSync("ed25519", {
       publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      privateKeyEncoding:{ type: "pkcs8", format: "pem" },
     });
-    return { publicKey, privateKey };
+    logger.debug("🔐 Ed25519 keypair generated");
+    return kp;
   }
-
   static sign(data, privateKey) {
-    const message = Buffer.from(
-      typeof data === "string" ? data : JSON.stringify(data)
-    );
-    return sign(null, message, privateKey).toString("base64");
+    if (!privateKey) throw new Error("privateKey required");
+    const msg = Buffer.from(typeof data === "string" ? data : JSON.stringify(data));
+    return sign(null, msg, privateKey).toString("base64");
   }
-
   static verify(data, signature, publicKey) {
-    const message = Buffer.from(
-      typeof data === "string" ? data : JSON.stringify(data)
-    );
-    return verify(null, message, publicKey, Buffer.from(signature, "base64"));
+    if (!publicKey || !signature) return false;
+    const msg = Buffer.from(typeof data === "string" ? data : JSON.stringify(data));
+    return verify(null, msg, publicKey, Buffer.from(signature, "base64"));
   }
 }

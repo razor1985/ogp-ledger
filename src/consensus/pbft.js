@@ -1,133 +1,72 @@
-// src/consensus/pbft.js
 import crypto from "crypto";
-import { Ed25519 } from "../crypto/ed25519.js";
-import { getFabric } from "../fabric/broker.js";
-import { OGPIdentity } from "@razor1985/ogp-client";
 import logger from "../utils/logger.js";
+import { ViewManager } from "./PBFTView.js";
+import { SnapshotStore } from "../state/SnapshotStore.js";
+import { CircuitBreaker } from "../utils/CircuitBreaker.js";
 
-
-/**
- * PBFT engine with validator-signature embedding.
- *  - mock mode → local simulation
- *  - production → signed message exchange via OGP Fabric
- */
 export class PBFT {
-  constructor({
-    mock = true,
-    nodeId = "validator-1",
-    peers = [],
-    privateKey = null,
-  } = {}) {
-    this.mock = mock;
-    this.nodeId = nodeId;
-    this.peers = peers;
-    this.privateKey = privateKey;
-    this.validatorSignatures = []; // populated during consensus
+  constructor(fabric, chain, viewManager = new ViewManager()) {
+    this.fabric = fabric;
+    this.chain = chain;
+    this.viewManager = viewManager;
+    this.snapshot = new SnapshotStore();
+    this.state = { sequence: 0, phase: "idle" };
+    this.circuit = new CircuitBreaker({ failureThreshold: 3, recoveryTime: 15000 });
+    this.validators = new Set();
+    this.timeout = 8000;
   }
 
-  async reachConsensus(tx) {
-    if (this.mock) return this.#mockConsensus(tx);
-    return this.#realConsensus(tx);
+  async start(validators = []) {
+    this.validators = new Set(validators);
+    this.leader = this.viewManager.rotate([...this.validators]);
+    logger.info(`🧭 PBFT started with leader=${this.leader}`);
   }
 
-  /* ---------------- MOCK ---------------- */
-  async #mockConsensus(tx) {
-    console.log("⚙️  Running PBFT consensus (mock)...");
-    console.log("🟡 PBFT Phase: pre-prepare");
-    console.log("📡 PBFT broadcast: prepare", tx);
-    console.log("🟠 PBFT Phase: prepare");
-    console.log("📡 PBFT broadcast: commit", tx);
-    console.log("🟢 PBFT Phase: commit — consensus achieved!");
-
-    // generate synthetic validator signatures
-    this.validatorSignatures = [
-      { validatorId: this.nodeId, signature: "mock-sig-" + Date.now() },
-      ...this.peers.map((p, i) => ({
-        validatorId: p.id || `peer-${i + 1}`,
-        signature: "mock-sig-" + (Date.now() + i),
-      })),
-    ];
-    return true;
+  async prePrepare(block) {
+    this.state.phase = "pre-prepare";
+    this.state.sequence++;
+    this.digest = this._hash(block);
+    logger.info(`📦 Pre-prepare seq=${this.state.sequence}`);
+    await this.fabric.publish("pbft.prepare", { digest: this.digest, seq: this.state.sequence });
+    this._startTimeout();
   }
 
-  /* ---------------- PRODUCTION ---------------- */
-  async #realConsensus(tx) {
-    const digest = this.#hash(JSON.stringify(tx));
-    const mySig = Ed25519.sign(digest, this.privateKey);
-    this.validatorSignatures = [{ validatorId: this.nodeId, signature: mySig }];
-
-    console.log("⚙️  PBFT pre-prepare → broadcast to peers");
-    await this.#broadcast({ type: "pre-prepare", digest, signature: mySig });
-
-    const prepares = await this.#collect("prepare", digest);
-    const commits = await this.#collect("commit", digest);
-
-    const quorum = this.#quorum();
-    if (prepares.length >= quorum && commits.length >= quorum) {
-      console.log("🟢 PBFT consensus achieved with quorum signatures");
-      this.validatorSignatures.push(...prepares.map(p => ({
-        validatorId: p.nodeId,
-        signature: p.signature,
-      })));
-      this.validatorSignatures.push(...commits.map(c => ({
-        validatorId: c.nodeId,
-        signature: c.signature,
-      })));
-      return true;
-    }
-    console.warn("⚠️  Consensus failed — insufficient signatures");
-    return false;
+  async prepare(msg) {
+    if (this.state.phase !== "pre-prepare") return;
+    this.state.phase = "prepare";
+    logger.info(`📡 Prepare phase seq=${msg.seq}`);
+    await this.fabric.publish("pbft.commit", msg);
   }
 
-   async function broadcastPBFTMessage(topic, message) {
-    const fabric = getFabric();
-    const signed = {
-      signer: OGPIdentity.sign(message),
-      payload: OGPIdentity.encrypt(message),
-    };
-    await fabric.publish(topic, signed);
-    logger.info(`[Fabric] Published ${topic}`);
-  }
-  
-
-  async #collect(type, digest) {
-    // placeholder for OGP Fabric subscription
-    const arr = [];
-    for (const peer of this.peers) {
-      const sig = this.mock
-        ? "mock-sig"
-        : Ed25519.sign(digest, this.privateKey);
-      arr.push({ nodeId: peer.id, digest, type, signature: sig });
-    }
-    return arr;
+  async commit(msg) {
+    if (this.state.phase !== "prepare") return;
+    this.state.phase = "commit";
+    const block = this.chain.getLatestBlock();
+    await this.chain.commitBlockWithDB(block);
+    this.snapshot.saveSnapshot({ height: block.index, lastHash: block.hash });
+    logger.info(`✅ Block committed via PBFT seq=${msg.seq}`);
   }
 
-  export async function setupPBFTListeners() {
-    const fabric = getFabric();
-    const topics = ["pbft.prepare", "pbft.commit"];
-  
-    topics.forEach((topic) => {
-      fabric.subscribe(topic, (msg) => {
-        try {
-          const verified = OGPIdentity.verify(msg.signer);
-          if (!verified) throw new Error("Invalid signature");
-          const payload = OGPIdentity.decrypt(msg.payload);
-          logger.info(`[Fabric] Received ${topic}`, payload);
-          handlePBFTMessage(topic, payload);
-        } catch (err) {
-          logger.error(`Error handling ${topic}:`, err.message);
-        }
-      });
-    });
+  async handleTimeout() {
+    logger.warn("⏱️ PBFT timeout — rotating leader");
+    this.leader = this.viewManager.rotate([...this.validators]);
+    this.state.phase = "idle";
+    this.circuit.recordFailure();
+    logger.info(`🔁 View changed → new leader=${this.leader}`);
   }
 
-  
-  #hash(d) {
-    return crypto.createHash("sha3-512").update(d).digest("hex");
+  checkpoint() {
+    const latest = this.chain.getLatestBlock();
+    this.snapshot.saveSnapshot({ height: latest.index, lastHash: latest.hash });
+    logger.info(`🧩 Checkpoint saved height=${latest.index}`);
   }
 
-  #quorum() {
-    const n = Math.max(this.peers.length + 1, 4);
-    return Math.floor((2 * n) / 3);
+  _startTimeout() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.handleTimeout(), this.timeout);
+  }
+
+  _hash(data) {
+    return crypto.createHash("sha3-512").update(JSON.stringify(data)).digest("hex");
   }
 }
