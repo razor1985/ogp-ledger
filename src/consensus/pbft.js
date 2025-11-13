@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import logger from "../utils/logger.js";
-import { ViewManager } from "./PBFTView.js";
+import { PBFTView } from "./PBFTView.js";
 import { SnapshotStore } from "../state/SnapshotStore.js";
 import { CircuitBreaker } from "../utils/CircuitBreaker.js";
 
 export class PBFT {
-  constructor(fabric, chain, viewManager = new ViewManager()) {
+  constructor(fabric, chain, viewManager = new PBFTView()){
     this.fabric = fabric;
     this.chain = chain;
     this.viewManager = viewManager;
