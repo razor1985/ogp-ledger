@@ -37,6 +37,8 @@ export { CircuitBreaker } from "./utils/CircuitBreaker.js";
 export { sanitizeMessage, Deduper } from "./utils/MessageGuard.js";
 export { metrics } from "./utils/metrics.js";
 export * as merkle from "./utils/merkle.js";
+export { Blockchain } from "./core/blockchain.js";
+
 
 // -----------------------------------------------------------------------------
 // Node Runtime Entrypoint
