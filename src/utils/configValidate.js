@@ -2,7 +2,10 @@ import fs from "fs";
 import path from "path";
 import logger from "./logger.js";
 
-export function validateConfig(cfg = {}) {
+/**
+ * Main validation function
+ */
+function validateConfig(cfg = {}) {
   if (typeof cfg !== "object") {
     throw new Error("Config must be an object");
   }
@@ -19,18 +22,14 @@ export function validateConfig(cfg = {}) {
     }
   }
 
-  // ---------------------------------------------------------------------
   // 2️⃣ orgId validation
-  // ---------------------------------------------------------------------
   if (!/^[a-zA-Z0-9._-]+$/.test(cfg.orgId)) {
     throw new Error(
       `❌ Invalid orgId '${cfg.orgId}'. Only letters, digits, ., _ and - allowed.`
     );
   }
 
-  // ---------------------------------------------------------------------
-  // 3️⃣ region validation
-  // ---------------------------------------------------------------------
+  // 3️⃣ Region validation (soft)
   const allowedRegions = [
     "us-east-1",
     "us-west-2",
@@ -41,38 +40,29 @@ export function validateConfig(cfg = {}) {
 
   if (!allowedRegions.includes(cfg.region)) {
     logger.warn(
-      `⚠️ Region '${cfg.region}' not recognized. ` +
-        `Allowed: ${allowedRegions.join(", ")}. Proceeding anyway.`
+      `⚠️ Region '${cfg.region}' not recognized. Allowed: ${allowedRegions.join(", ")}`
     );
   }
 
-  // ---------------------------------------------------------------------
-  // 4️⃣ networkId validation
-  // ---------------------------------------------------------------------
+  // 4️⃣ networkId length
   if (cfg.networkId.length < 3) {
     throw new Error("❌ networkId must be at least 3 characters long.");
   }
 
-  // ---------------------------------------------------------------------
-  // 5️⃣ Database adapter validation
-  // ---------------------------------------------------------------------
+  // 5️⃣ DB adapter
   const allowedAdapters = ["postgres", "sqlite", "memory"];
-
   if (cfg.adapter && !allowedAdapters.includes(cfg.adapter)) {
     throw new Error(
       `❌ Invalid adapter '${cfg.adapter}'. Valid: ${allowedAdapters.join(", ")}`
     );
   }
 
-  // Apply default adapter if missing
   if (!cfg.adapter) {
     cfg.adapter = "postgres";
     logger.info("ℹ️ No adapter specified — using 'postgres'");
   }
 
-  // ---------------------------------------------------------------------
-  // 6️⃣ Key directory validation
-  // ---------------------------------------------------------------------
+  // 6️⃣ Key directory
   if (cfg.keyDir) {
     const fullPath = path.resolve(cfg.keyDir);
     if (!fs.existsSync(fullPath)) {
@@ -84,9 +74,7 @@ export function validateConfig(cfg = {}) {
     logger.info("ℹ️ No keyDir provided — using default './keys'");
   }
 
-  // ---------------------------------------------------------------------
-  // 7️⃣ Consensus mode validation
-  // ---------------------------------------------------------------------
+  // 7️⃣ Consensus mode
   const allowedConsensus = ["pbft", "raft"];
   if (cfg.consensus && !allowedConsensus.includes(cfg.consensus.toLowerCase())) {
     throw new Error(
@@ -99,29 +87,27 @@ export function validateConfig(cfg = {}) {
     logger.info("ℹ️ No consensus specified — using PBFT");
   }
 
-  // ---------------------------------------------------------------------
-  // 8️⃣ Logging level validation
-  // ---------------------------------------------------------------------
+  // 8️⃣ Logging level
   const allowedLogLevels = ["debug", "info", "warn", "error"];
   if (cfg.logLevel && !allowedLogLevels.includes(cfg.logLevel)) {
     logger.warn(
-      `⚠️ Invalid logLevel '${cfg.logLevel}'. Allowed: ${allowedLogLevels.join(
-        ", "
-      )}. Defaulting to 'info'.`
+      `⚠️ Invalid logLevel '${cfg.logLevel}'. Allowed: ${allowedLogLevels.join(", ")}. Defaulting to 'info'`
     );
     cfg.logLevel = "info";
   }
 
-  // ---------------------------------------------------------------------
-  // 9️⃣ Safe defaults for optional values
-  // ---------------------------------------------------------------------
-  cfg.snapshotInterval = cfg.snapshotInterval || 5000; // 5 seconds default
-  cfg.healthCheckInterval = cfg.healthCheckInterval || 30000; // 30 seconds
+  // 9️⃣ Defaults
+  cfg.snapshotInterval = cfg.snapshotInterval || 5000;
+  cfg.healthCheckInterval = cfg.healthCheckInterval || 30000;
   cfg.replicatorBatch = cfg.replicatorBatch || 10;
 
   logger.info("✅ Configuration validated successfully");
   return true;
 }
 
-
+// ---------------------------------------------------------------------
+// EXPORTS (Corrected, No Duplicates)
+// ---------------------------------------------------------------------
+export { validateConfig };
 export const configValidate = validateConfig;
+export default validateConfig;

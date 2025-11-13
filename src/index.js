@@ -7,7 +7,7 @@
 
 import { fabric } from "./fabric/broker.js";
 import { setupPBFTListeners } from "./pbft/handler.js";
-import { Blockchain } from "./core/blockchain.js";
+import { Blockchain } from "./core/blockchain.js"; 
 import { LedgerServer } from "./ledgerServer.js";              // ✅ FIXED PATH
 import logger from "./utils/logger.js";                        // ✅ FIXED DEFAULT IMPORT
 import { loadConfig } from "./config/fabric.js";
