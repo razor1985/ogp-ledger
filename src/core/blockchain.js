@@ -5,7 +5,7 @@ import { merkleRoot, computeMerkleRoot  } from "../utils/merkle.js";
 import { SnapshotStore } from "../state/SnapshotStore.js";
 import { TxValidator } from "./TxValidator.js";
 import { LedgerDBService } from "@razor1985/ogp-ledgerdb";
-import { CircuitBreaker } from "@razor1985/ogp-ledgerdb";
+import { CircuitBreaker } from "../utils/CircuitBreaker.js";
 
 export class Blockchain {
   constructor({
