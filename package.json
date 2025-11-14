@@ -1,6 +1,6 @@
 {
     "name": "@razor1985/ogp-ledger",
-    "version": "1.0.10",
+    "version": "1.0.11",
     "description": "OGP Ledger — a minerless blockchain and consensus framework built on PBFT/Raft for distributed trust.",
     "main": "src/index.js",
     "type": "module",
