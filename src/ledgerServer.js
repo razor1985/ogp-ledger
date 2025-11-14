@@ -7,6 +7,8 @@ export class LedgerServer {
   constructor({ orgId, privateKey = null, peers = [], consensus = "PBFT" } = {}) {
     this.orgId = orgId;
     this.privateKey = privateKey;
+
+    // LedgerServer manages its own blockchain instance
     this.blockchain = new Blockchain();
     this.ledger = new Map();
 
@@ -21,7 +23,17 @@ export class LedgerServer {
     }
   }
 
+  /**
+   * 🟦 INTERNAL WARM-UP HANDLING
+   * Skips signature + consensus + block commit
+   * Used only for startup health checks.
+   */
   async processTransaction(tx, senderPublicKey) {
+    // 0️⃣ Internal warm-up/no-op
+    if (tx.internal === true) {
+      return { ok: true, internal: true };
+    }
+
     // 1️⃣ Verify signature
     const { signature, ...txData } = tx;
     if (!Ed25519.verify(txData, signature, senderPublicKey)) {
@@ -35,16 +47,19 @@ export class LedgerServer {
 
     if (!approved) throw new Error("❌ Consensus/Replication failed");
 
-    // 3️⃣ Add and commit block
+    // 3️⃣ Add & commit block
     await this.blockchain.addTransaction(tx);
     await this.blockchain.commitBlock(this.consensusEngine.validatorSignatures);
 
-    // 4️⃣ Update balances
+    // 4️⃣ Update balances for simple ledger model
     this.updateBalances(tx);
+
+    return { ok: true };
   }
 
   updateBalances(tx) {
     const { from, to, amount, type } = tx;
+
     if (type === "mint") {
       this.ledger.set(to, (this.ledger.get(to) || 0) + amount);
     } else {

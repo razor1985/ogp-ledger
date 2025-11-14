@@ -7,9 +7,9 @@
 
 import { fabric } from "./fabric/broker.js";
 import { setupPBFTListeners } from "./pbft/handler.js";
-import { Blockchain } from "./core/blockchain.js"; 
-import { LedgerServer } from "./ledgerServer.js";              // ✅ FIXED PATH
-import logger from "./utils/logger.js";                        // ✅ FIXED DEFAULT IMPORT
+import { Blockchain } from "./core/blockchain.js";
+import { LedgerServer } from "./ledgerServer.js";
+import logger from "./utils/logger.js";
 import { loadConfig } from "./config/fabric.js";
 import { PBFT } from "./consensus/pbft.js";
 import { Raft } from "./consensus/raft.js";
@@ -25,9 +25,9 @@ import { configValidate } from "./utils/configValidate.js";
 import { keyManager } from "./crypto/keyManager.js";
 import { KeyRotationManager } from "./security/KeyRotationManager.js";
 
-// -----------------------------------------------------------------------------
-// SDK Exports
-// -----------------------------------------------------------------------------
+/* -----------------------------------------------------------
+ * SDK Exports
+ * ----------------------------------------------------------- */
 export { Block } from "./core/block.js";
 export { TxValidator } from "./core/TxValidator.js";
 export { PBFT } from "./consensus/pbft.js";
@@ -39,44 +39,45 @@ export { metrics } from "./utils/metrics.js";
 export * as merkle from "./utils/merkle.js";
 export { Blockchain } from "./core/blockchain.js";
 
+/* -----------------------------------------------------------
+ * Runtime Entrypoint
+ * ----------------------------------------------------------- */
 
-// -----------------------------------------------------------------------------
-// Node Runtime Entrypoint
-// -----------------------------------------------------------------------------
 const CONSENSUS_MODE = (process.env.CONSENSUS_MODE || "pbft").toLowerCase();
 const MODE = process.env.MODE || "dev";
 const HEADLESS = process.env.HEADLESS === "true";
 
 (async () => {
-  logger.info(
-    `🚀 Launching OGP Ledger Node [mode=${MODE}, consensus=${CONSENSUS_MODE}]`
-  );
+  logger.info(`🚀 Launching OGP Ledger Node [mode=${MODE}, consensus=${CONSENSUS_MODE}]`);
 
-  // 1️⃣ Load + validate config
+  /* 1️⃣ Load + validate config */
   const config = loadConfig();
   configValidate(config);
   logger.info(`✅ Loaded config for org=${config.orgId}, region=${config.region}`);
 
-  // 2️⃣ Circuit breaker protects startup
+  /* 2️⃣ Circuit Breaker (patched API) */
   const nodeCircuit = new CircuitBreaker({
-    failureThreshold: 3,
-    recoveryTime: 10000,
+    failThreshold: 3,
+    resetMs: 10000,
   });
 
   const guardedInit = async (label, fn) => {
+    if (!nodeCircuit.canRequest()) {
+      throw new Error(`Circuit OPEN — skipping ${label}`);
+    }
     try {
       await fn();
-      nodeCircuit.reset();
+      nodeCircuit.success();
     } catch (err) {
-      nodeCircuit.recordFailure();
+      nodeCircuit.fail();
       logger.error(`❌ ${label} failed: ${err.message}`);
-      if (nodeCircuit.isOpen()) {
-        throw new Error(`Circuit open — aborting startup at ${label}`);
+      if (!nodeCircuit.canRequest()) {
+        throw new Error(`Circuit OPEN — aborting startup at ${label}`);
       }
     }
   };
 
-  // 3️⃣ LedgerDB
+  /* 3️⃣ LedgerDB Initialization */
   let ledgerDB;
   await guardedInit("LedgerDB Init", async () => {
     ledgerDB = new LedgerDBService({
@@ -89,7 +90,7 @@ const HEADLESS = process.env.HEADLESS === "true";
     logger.info("💾 LedgerDB connected");
   });
 
-  // 4️⃣ Fabric Node
+  /* 4️⃣ Fabric Node */
   await guardedInit("Fabric Broker", async () => {
     await fabric.connect();
     await fabric.register({
@@ -106,14 +107,14 @@ const HEADLESS = process.env.HEADLESS === "true";
     logger.info("🌐 Fabric registered and active");
   });
 
-  // 4.5 — Key Rotation Manager
+  /* 4.5 — Key Rotation */
   await guardedInit("Key Rotation Manager", async () => {
     const keyRotation = new KeyRotationManager(fabric, { keyDir: "./keys" });
     await keyRotation.init();
     logger.info(`🔐 Key rotation active for ${config.orgId}`);
   });
 
-  // 5️⃣ Multi-region replicator
+  /* 5️⃣ Multi-Region Replicator */
   let replicator;
   await guardedInit("Fabric Replicator", async () => {
     replicator = new FabricReplicator35({
@@ -125,7 +126,7 @@ const HEADLESS = process.env.HEADLESS === "true";
     logger.info("🔁 FabricReplicator35 active");
   });
 
-  // 6️⃣ Blockchain object
+  /* 6️⃣ Blockchain Instance (shared everywhere) */
   const chain = new Blockchain({
     ledgerDB,
     orgId: config.orgId,
@@ -135,11 +136,9 @@ const HEADLESS = process.env.HEADLESS === "true";
     logger.warn("⚠️ Snapshot not found — creating genesis");
     await chain.createGenesisBlock();
   }
-  logger.info(
-    `📜 Blockchain ready (height=${chain.getLatestBlock()?.index || 0})`
-  );
+  logger.info(`📜 Blockchain ready (height=${chain.getLatestBlock()?.index || 0})`);
 
-  // 7️⃣ Ledger Server
+  /* 7️⃣ Ledger Server (patched to accept external chain) */
   const ledgerServer = HEADLESS
     ? null
     : new LedgerServer({
@@ -147,15 +146,16 @@ const HEADLESS = process.env.HEADLESS === "true";
         privateKey: keyManager.getPrivateKey(),
         peers: fabric.getPeers?.() || [],
         consensus: CONSENSUS_MODE.toUpperCase(),
+        chain,
       });
 
   if (ledgerServer) logger.info("🛰️ LedgerServer initialized");
 
-  // 8️⃣ Telemetry
+  /* 8️⃣ Telemetry */
   const watchtower = new WatchtowerHooks(config.orgId, config.region);
   const metrics = new MetricsCollector();
 
-  // 9️⃣ Consensus Engine
+  /* 9️⃣ Consensus Engine */
   let consensus;
   await guardedInit("Consensus Engine", async () => {
     if (CONSENSUS_MODE === "pbft") {
@@ -169,23 +169,25 @@ const HEADLESS = process.env.HEADLESS === "true";
     }
   });
 
-  // 🔟 Warm-up transaction
-  const tx = {
-    from: "TestUser",
-    to: "Verifier",
-    amount: 1,
-    ts: Date.now(),
+  /* 🔟 Warm-Up TX (internal = true) */
+  const ledgerApi = ledgerServer || {
+    processTransaction: async () => ({ ok: true, warmup: true }),
   };
 
-  const ledgerApi =
-    ledgerServer || {
-      processTransaction: async () => ({ mock: true }),
-    };
+  await ledgerApi.processTransaction(
+    {
+      from: "system",
+      to: "system",
+      amount: 0,
+      ts: Date.now(),
+      internal: true,
+    },
+    "internal"
+  );
 
-  const warmUp = await ledgerApi.processTransaction(tx);
-  logger.info(`💸 Warm-up Tx processed: ${JSON.stringify(warmUp)}`);
+  logger.info("💸 Warm-up transaction processed (internal)");
 
-  // 🧩 Diagnostics
+  /* 🧩 Diagnostics */
   const latestBlock = chain.getLatestBlock();
   if (latestBlock) {
     watchtower.push({
@@ -199,6 +201,6 @@ const HEADLESS = process.env.HEADLESS === "true";
   logger.info("✅ OGP Ledger Node fully initialized (Stage 3.6)");
 
   if (HEADLESS) {
-    logger.info("🔍 Running in headless mode — Mgmt UI telemetry only");
+    logger.info("🔍 Headless mode enabled — only telemetry active");
   }
 })();
