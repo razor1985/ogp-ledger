@@ -126,7 +126,7 @@ const HEADLESS = process.env.HEADLESS === "true";
     logger.info("🔁 FabricReplicator35 active");
   });
 
-  /* 6️⃣ Blockchain Instance (shared everywhere) */
+  /* 6️⃣ Blockchain Instance */
   const chain = new Blockchain({
     ledgerDB,
     orgId: config.orgId,
@@ -138,7 +138,7 @@ const HEADLESS = process.env.HEADLESS === "true";
   }
   logger.info(`📜 Blockchain ready (height=${chain.getLatestBlock()?.index || 0})`);
 
-  /* 7️⃣ Ledger Server (patched to accept external chain) */
+  /* 7️⃣ Ledger Server */
   const ledgerServer = HEADLESS
     ? null
     : new LedgerServer({
@@ -169,12 +169,8 @@ const HEADLESS = process.env.HEADLESS === "true";
     }
   });
 
-  /* 🔟 Warm-Up TX (internal = true) */
-  const ledgerApi = ledgerServer || {
-    processTransaction: async () => ({ ok: true, warmup: true }),
-  };
-
-  await ledgerApi.processTransaction(
+  /* 🔟 Warm-Up Transaction */
+  await ledgerServer?.processTransaction(
     {
       from: "system",
       to: "system",
@@ -185,7 +181,7 @@ const HEADLESS = process.env.HEADLESS === "true";
     "internal"
   );
 
-  logger.info("💸 Warm-up transaction processed (internal)");
+  logger.info("💸 Warm-up transaction processed");
 
   /* 🧩 Diagnostics */
   const latestBlock = chain.getLatestBlock();
@@ -197,10 +193,9 @@ const HEADLESS = process.env.HEADLESS === "true";
   }
 
   metrics.increment("blocks_committed");
-
   logger.info("✅ OGP Ledger Node fully initialized (Stage 3.6)");
 
   if (HEADLESS) {
-    logger.info("🔍 Headless mode enabled — only telemetry active");
+    logger.info("🔍 Headless mode enabled — telemetry only");
   }
 })();
