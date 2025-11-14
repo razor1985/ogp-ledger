@@ -56,26 +56,30 @@ const HEADLESS = process.env.HEADLESS === "true";
   logger.info(`✅ Loaded config for org=${config.orgId}, region=${config.region}`);
 
   /* 2️⃣ Circuit Breaker (patched API) */
-  const nodeCircuit = new CircuitBreaker({
-    failThreshold: 3,
-    resetMs: 10000,
-  });
+// Adapt index.js to match CircuitBreaker.js API
+const nodeCircuit = new CircuitBreaker({
+  failureThreshold: 3,
+  recoveryTime: 10000,
+});
 
-  const guardedInit = async (label, fn) => {
+const guardedInit = async (label, fn) => {
+  if (!nodeCircuit.canRequest()) {
+    throw new Error(`Circuit OPEN — skipping ${label}`);
+  }
+
+  try {
+    await fn();
+    nodeCircuit.recordSuccess();   // instead of success()
+  } catch (err) {
+    nodeCircuit.recordFailure();   // instead of fail()
+    logger.error(`❌ ${label} failed: ${err.message}`);
+
     if (!nodeCircuit.canRequest()) {
-      throw new Error(`Circuit OPEN — skipping ${label}`);
+      throw new Error(`Circuit OPEN — aborting startup at ${label}`);
     }
-    try {
-      await fn();
-      nodeCircuit.success();
-    } catch (err) {
-      nodeCircuit.fail();
-      logger.error(`❌ ${label} failed: ${err.message}`);
-      if (!nodeCircuit.canRequest()) {
-        throw new Error(`Circuit OPEN — aborting startup at ${label}`);
-      }
-    }
-  };
+  }
+};
+
 
   /* 3️⃣ LedgerDB Initialization */
   let ledgerDB;
