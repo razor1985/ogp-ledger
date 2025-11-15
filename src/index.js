@@ -32,7 +32,7 @@ import { keyManager } from "./crypto/keyManager.js";
 import { KeyRotationManager } from "./security/KeyRotationManager.js";
 
 /*** 🔐 FabricController (Primary Fabric Node Control) ***/
-import { FabricController } from "@razor1985/ogp-fabricController";
+import { FabricController } from "@razor1985/ogp-fabric-controller";
 
 /* -----------------------------------------------------------
  * MODE + CONSENSUS
